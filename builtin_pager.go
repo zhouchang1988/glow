@@ -36,25 +36,34 @@ var (
 )
 
 type builtinPagerModel struct {
-	viewport  viewport.Model
-	content   string
-	fileName  string
-	quitting  bool
-	width     int
-	height    int
+	viewport    viewport.Model
+	rawViewport viewport.Model
+	content     string
+	rawMarkdown string
+	fileName    string
+	quitting    bool
+	splitMode   bool
+	width       int
+	height      int
 }
 
-func newBuiltinPagerModel(content, fileName string, w, h int) builtinPagerModel {
+func newBuiltinPagerModel(content, rawMarkdown, fileName string, w, h int) builtinPagerModel {
 	vp := viewport.New(w, h-builtinPagerStatusBarHeight)
 	vp.SetContent(content)
 	vp.HighPerformanceRendering = false
 
+	rawVp := viewport.New(0, 0)
+	rawVp.YPosition = 0
+	rawVp.HighPerformanceRendering = false
+
 	return builtinPagerModel{
-		viewport: vp,
-		content:  content,
-		fileName: fileName,
-		width:    w,
-		height:   h,
+		viewport:    vp,
+		rawViewport: rawVp,
+		content:     content,
+		rawMarkdown: rawMarkdown,
+		fileName:    fileName,
+		width:       w,
+		height:      h,
 	}
 }
 
@@ -69,18 +78,50 @@ func (m builtinPagerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "q", "esc":
 			m.quitting = true
 			return m, tea.Quit
+		case "s":
+			if m.width < 80 {
+				break
+			}
+			m.splitMode = !m.splitMode
+			m.setSize(m.width, m.height)
+			if m.splitMode {
+				m.rawViewport.SetContent(formatRawMarkdown(m.rawMarkdown, m.rawViewport.Width))
+				m.rawViewport.GotoTop()
+			}
 		}
 
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
-		m.viewport.Width = msg.Width
-		m.viewport.Height = msg.Height - builtinPagerStatusBarHeight
+		m.setSize(msg.Width, msg.Height)
+		if m.splitMode {
+			m.rawViewport.SetContent(formatRawMarkdown(m.rawMarkdown, m.rawViewport.Width))
+		}
 	}
 
 	var cmd tea.Cmd
 	m.viewport, cmd = m.viewport.Update(msg)
+
+	// Sync scroll in split mode
+	if m.splitMode {
+		syncScroll(&m.viewport, &m.rawViewport)
+	}
+
 	return m, cmd
+}
+
+func (m *builtinPagerModel) setSize(w, h int) {
+	viewHeight := h - builtinPagerStatusBarHeight
+	if m.splitMode {
+		panelWidth := (w - 1) / 2
+		m.rawViewport.Width = panelWidth
+		m.rawViewport.Height = viewHeight
+		m.viewport.Width = panelWidth
+		m.viewport.Height = viewHeight
+	} else {
+		m.viewport.Width = w
+		m.viewport.Height = viewHeight
+	}
 }
 
 func (m builtinPagerModel) View() string {
@@ -89,8 +130,19 @@ func (m builtinPagerModel) View() string {
 	}
 
 	var b strings.Builder
-	fmt.Fprint(&b, m.viewport.View())
-	fmt.Fprint(&b, "\n")
+	if m.splitMode {
+		left := m.rawViewport.View()
+		right := m.viewport.View()
+		divStyle := lipgloss.NewStyle().
+			Foreground(lipgloss.AdaptiveColor{Light: "#CCCCCC", Dark: "#444444"}).
+			Render
+		divider := divStyle("│")
+		body := lipgloss.JoinHorizontal(lipgloss.Top, left, divider, right)
+		fmt.Fprint(&b, body+"\n")
+	} else {
+		fmt.Fprint(&b, m.viewport.View())
+		fmt.Fprint(&b, "\n")
+	}
 	m.statusBarView(&b)
 	return b.String()
 }
@@ -100,9 +152,12 @@ func (m builtinPagerModel) statusBarView(b *strings.Builder) {
 	scrollPercent := fmt.Sprintf(" %3.f%% ", percent*100)
 	scrollPercent = builtinPagerScrollPosStyle(scrollPercent)
 
-	helpNote := builtinPagerHelpStyle(" q quit ")
+	helpNote := builtinPagerHelpStyle(" q quit  s split ")
 
 	note := " " + m.fileName + " "
+	if m.splitMode {
+		note = " [SPLIT] " + m.fileName + " "
+	}
 	maxNoteWidth := m.width - ansi.PrintableRuneWidth(scrollPercent) - ansi.PrintableRuneWidth(helpNote)
 	if maxNoteWidth > 0 && runewidth.StringWidth(note) > maxNoteWidth {
 		note = runewidth.Truncate(note, maxNoteWidth, "…")
@@ -130,7 +185,7 @@ func countLines(s string) int {
 
 // runBuiltinPager starts a Bubble Tea program that displays content in a
 // scrollable viewport with vim-style keybindings.
-func runBuiltinPager(content, fileName string) error {
+func runBuiltinPager(content, rawMarkdown, fileName string) error {
 	w, h, err := term.GetSize(int(os.Stdout.Fd()))
 	if err != nil {
 		w = 80
@@ -138,9 +193,54 @@ func runBuiltinPager(content, fileName string) error {
 	}
 
 	p := tea.NewProgram(
-		newBuiltinPagerModel(content, fileName, w, h),
+		newBuiltinPagerModel(content, rawMarkdown, fileName, w, h),
 		tea.WithAltScreen(),
 	)
 	_, err = p.Run()
 	return err
+}
+
+const builtinRawLineNumWidth = 4
+
+// formatRawMarkdown formats raw markdown text with line numbers for the
+// split view's left panel.
+func formatRawMarkdown(body string, maxWidth int) string {
+	if body == "" {
+		return ""
+	}
+
+	lines := strings.Split(body, "\n")
+	if len(lines) > 0 && lines[len(lines)-1] == "" {
+		lines = lines[:len(lines)-1]
+	}
+
+	lineNumFg := lipgloss.AdaptiveColor{Light: "#656565", Dark: "#7D7D7D"}
+	lineNumStyle := lipgloss.NewStyle().Foreground(lineNumFg).Render
+
+	var b strings.Builder
+	for i, line := range lines {
+		num := lineNumStyle(fmt.Sprintf("%"+fmt.Sprint(builtinRawLineNumWidth)+"d", i+1))
+		b.WriteString(num)
+		if maxWidth > 0 {
+			trunc := lipgloss.NewStyle().MaxWidth(maxWidth - builtinRawLineNumWidth).Render
+			b.WriteString(trunc(line))
+		} else {
+			b.WriteString(line)
+		}
+		if i+1 < len(lines) {
+			b.WriteRune('\n')
+		}
+	}
+	return b.String()
+}
+
+// syncScroll maps the scroll percentage from source viewport to target viewport.
+func syncScroll(source, target *viewport.Model) {
+	if target.TotalLineCount() <= target.Height {
+		target.GotoTop()
+		return
+	}
+	percent := source.ScrollPercent()
+	yOffset := int(percent * float64(target.TotalLineCount()-target.Height))
+	target.SetYOffset(yOffset)
 }

@@ -346,7 +346,7 @@ func executeCLI(cmd *cobra.Command, src *source, w io.Writer) error {
 			}
 			contentLines := countLines(out)
 			if termHeight > 0 && contentLines > termHeight {
-				return runBuiltinPager(out, src.URL)
+				return runBuiltinPager(out, string(b), src.URL)
 			}
 		}
 		if _, err = fmt.Fprint(w, out); err != nil {
