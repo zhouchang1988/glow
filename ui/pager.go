@@ -130,14 +130,24 @@ func newPagerModel(common *commonModel) pagerModel {
 }
 
 func (m *pagerModel) setSize(w, h int) {
-	m.viewport.Width = w
-	m.viewport.Height = h - statusBarHeight
+	viewHeight := h - statusBarHeight
 
 	if m.showHelp {
 		if pagerHelpHeight == 0 {
 			pagerHelpHeight = strings.Count(m.helpView(), "\n")
 		}
-		m.viewport.Height -= (statusBarHeight + pagerHelpHeight)
+		viewHeight -= (statusBarHeight + pagerHelpHeight)
+	}
+
+	if m.splitMode {
+		panelWidth := (w - 1) / 2
+		m.rawViewport.Width = panelWidth
+		m.rawViewport.Height = viewHeight
+		m.viewport.Width = panelWidth
+		m.viewport.Height = viewHeight
+	} else {
+		m.viewport.Width = w
+		m.viewport.Height = viewHeight
 	}
 }
 
