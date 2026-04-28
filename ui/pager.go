@@ -103,6 +103,10 @@ type pagerModel struct {
 	currentDocument markdown
 
 	watcher *fsnotify.Watcher
+
+	// Split view
+	splitMode   bool
+	rawViewport viewport.Model
 }
 
 func newPagerModel(common *commonModel) pagerModel {
@@ -111,10 +115,15 @@ func newPagerModel(common *commonModel) pagerModel {
 	vp.YPosition = 0
 	vp.HighPerformanceRendering = config.HighPerformancePager
 
+	rawVp := viewport.New(0, 0)
+	rawVp.YPosition = 0
+	rawVp.HighPerformanceRendering = false
+
 	m := pagerModel{
-		common:   common,
-		state:    pagerStateBrowse,
-		viewport: vp,
+		common:      common,
+		state:       pagerStateBrowse,
+		viewport:    vp,
+		rawViewport: rawVp,
 	}
 	m.initWatcher()
 	return m
