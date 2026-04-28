@@ -498,6 +498,37 @@ func glamourRender(m pagerModel, markdown string) (string, error) {
 	return content.String(), nil
 }
 
+const rawLineNumWidth = 4
+
+// formatRawMarkdown formats raw markdown text with line numbers for the
+// split view's left panel.
+func formatRawMarkdown(body string, maxWidth int) string {
+	if body == "" {
+		return ""
+	}
+
+	lines := strings.Split(body, "\n")
+	if len(lines) > 0 && lines[len(lines)-1] == "" {
+		lines = lines[:len(lines)-1]
+	}
+
+	var b strings.Builder
+	for i, line := range lines {
+		num := lineNumberStyle(fmt.Sprintf("%"+fmt.Sprint(rawLineNumWidth)+"d", i+1))
+		b.WriteString(num)
+		if maxWidth > 0 {
+			trunc := lipgloss.NewStyle().MaxWidth(maxWidth - rawLineNumWidth).Render
+			b.WriteString(trunc(line))
+		} else {
+			b.WriteString(line)
+		}
+		if i+1 < len(lines) {
+			b.WriteRune('\n')
+		}
+	}
+	return b.String()
+}
+
 func (m *pagerModel) initWatcher() {
 	var err error
 	m.watcher, err = fsnotify.NewWatcher()
