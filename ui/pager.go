@@ -75,6 +75,10 @@ var (
 	lineNumberStyle = lipgloss.NewStyle().
 			Foreground(lineNumberFg).
 			Render
+
+	splitDividerStyle = lipgloss.NewStyle().
+				Foreground(lipgloss.AdaptiveColor{Light: "#CCCCCC", Dark: "#444444"}).
+				Render
 )
 
 type (
@@ -300,7 +304,16 @@ func (m pagerModel) update(msg tea.Msg) (pagerModel, tea.Cmd) {
 
 func (m pagerModel) View() string {
 	var b strings.Builder
-	fmt.Fprint(&b, m.viewport.View()+"\n")
+
+	if m.splitMode {
+		left := m.rawViewport.View()
+		right := m.viewport.View()
+		divider := splitDividerStyle("│")
+		body := lipgloss.JoinHorizontal(lipgloss.Top, left, divider, right)
+		fmt.Fprint(&b, body+"\n")
+	} else {
+		fmt.Fprint(&b, m.viewport.View()+"\n")
+	}
 
 	// Footer
 	m.statusBarView(&b)
