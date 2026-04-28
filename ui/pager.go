@@ -24,6 +24,7 @@ import (
 const (
 	statusBarHeight = 1
 	lineNumberWidth = 4
+	minSplitWidth   = 80
 )
 
 var (
@@ -196,8 +197,11 @@ func (m *pagerModel) unload() {
 		m.statusMessageTimer.Stop()
 	}
 	m.state = pagerStateBrowse
+	m.splitMode = false
 	m.viewport.SetContent("")
 	m.viewport.YOffset = 0
+	m.rawViewport.SetContent("")
+	m.rawViewport.YOffset = 0
 	m.unwatchFile()
 }
 
@@ -257,6 +261,26 @@ func (m pagerModel) update(msg tea.Msg) (pagerModel, tea.Cmd) {
 			_ = clipboard.WriteAll(m.currentDocument.Body)
 			cmds = append(cmds, m.showStatusMessage(pagerStatusMessage{"Copied contents", false}))
 
+		case "s":
+			if m.common.width < minSplitWidth {
+				cmds = append(cmds, m.showStatusMessage(pagerStatusMessage{
+					message: "Terminal too narrow for split view (need 80+ cols)",
+					isError: true,
+				}))
+				break
+			}
+			m.splitMode = !m.splitMode
+			m.setSize(m.common.width, m.common.height)
+			if m.splitMode {
+				m.rawViewport.SetContent(formatRawMarkdown(m.currentDocument.Body, m.rawViewport.Width))
+				m.rawViewport.GotoTop()
+			}
+			cmds = append(cmds, renderWithGlamour(m, m.currentDocument.Body))
+			cmds = append(cmds, m.showStatusMessage(pagerStatusMessage{
+				message: "Split view " + map[bool]string{true: "on", false: "off"}[m.splitMode],
+				isError: false,
+			}))
+
 		case "r":
 			return m, loadLocalMarkdown(&m.currentDocument)
 
@@ -272,6 +296,9 @@ func (m pagerModel) update(msg tea.Msg) (pagerModel, tea.Cmd) {
 		log.Info("content rendered", "state", m.state)
 
 		m.setContent(string(msg))
+		if m.splitMode {
+			m.rawViewport.SetContent(formatRawMarkdown(m.currentDocument.Body, m.rawViewport.Width))
+		}
 		if m.viewport.HighPerformanceRendering {
 			cmds = append(cmds, viewport.Sync(m.viewport))
 		}
@@ -290,6 +317,10 @@ func (m pagerModel) update(msg tea.Msg) (pagerModel, tea.Cmd) {
 	// We've received terminal dimensions, either for the first time or
 	// after a resize
 	case tea.WindowSizeMsg:
+		if m.splitMode {
+			m.setSize(msg.Width, msg.Height)
+			m.rawViewport.SetContent(formatRawMarkdown(m.currentDocument.Body, m.rawViewport.Width))
+		}
 		return m, renderWithGlamour(m, m.currentDocument.Body)
 
 	case statusMessageTimeoutMsg:
