@@ -330,6 +330,11 @@ func (m pagerModel) update(msg tea.Msg) (pagerModel, tea.Cmd) {
 	m.viewport, cmd = m.viewport.Update(msg)
 	cmds = append(cmds, cmd)
 
+	// Sync scroll between viewports in split mode
+	if m.splitMode {
+		syncScroll(&m.viewport, &m.rawViewport)
+	}
+
 	return m, tea.Batch(cmds...)
 }
 
@@ -391,6 +396,9 @@ func (m pagerModel) statusBarView(b *strings.Builder) {
 		note = m.statusMessage
 	} else {
 		note = m.currentDocument.Note
+		if m.splitMode {
+			note = "[SPLIT] " + note
+		}
 	}
 	note = truncate.StringWithTail(" "+note+" ", uint(max(0, //nolint:gosec
 		m.common.width-
@@ -435,6 +443,7 @@ func (m pagerModel) helpView() (s string) {
 		"c       copy contents",
 		"e       edit this document",
 		"r       reload this document",
+		"s       toggle split view",
 		"esc     back to files",
 		"q       quit",
 	}
@@ -571,6 +580,17 @@ func formatRawMarkdown(body string, maxWidth int) string {
 		}
 	}
 	return b.String()
+}
+
+// syncScroll maps the scroll percentage from source viewport to target viewport.
+func syncScroll(source, target *viewport.Model) {
+	if target.TotalLineCount() <= target.Height {
+		target.GotoTop()
+		return
+	}
+	percent := source.ScrollPercent()
+	yOffset := int(percent * float64(target.TotalLineCount()-target.Height))
+	target.SetYOffset(yOffset)
 }
 
 func (m *pagerModel) initWatcher() {

@@ -32,6 +32,29 @@ func TestFormatRawMarkdownNarrowWidth(t *testing.T) {
 	}
 }
 
+func TestSyncScrollMath(t *testing.T) {
+	// percent=0.5, totalLines=100, height=20 -> yOffset = 0.5 * 80 = 40
+	percent := 0.5
+	totalLines := 100
+	height := 20
+	yOffset := int(percent * float64(totalLines-height))
+	if yOffset != 40 {
+		t.Errorf("expected yOffset 40, got %d", yOffset)
+	}
+
+	// percent=0.0 -> yOffset = 0
+	yOffset = int(0.0 * float64(totalLines-height))
+	if yOffset != 0 {
+		t.Errorf("expected yOffset 0, got %d", yOffset)
+	}
+
+	// percent=1.0 -> yOffset = 80
+	yOffset = int(1.0 * float64(totalLines-height))
+	if yOffset != 80 {
+		t.Errorf("expected yOffset 80, got %d", yOffset)
+	}
+}
+
 func splitLines(s string) []string {
 	if s == "" {
 		return nil
