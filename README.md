@@ -110,7 +110,7 @@ Or just install it with `go`:
 go install github.com/charmbracelet/glow/v2@latest
 ```
 
-### Build (requires Go 1.21+)
+### Build (requires Go 1.25+)
 
 ```bash
 git clone https://github.com/charmbracelet/glow.git
@@ -160,7 +160,14 @@ glow -w 60
 
 ### Paging
 
-CLI output can be displayed in your preferred pager with the `-p` flag. This defaults
+When rendered content exceeds the terminal height, Glow automatically
+activates a built-in pager with vim-style scrolling:
+
+- `j` / `↓` — scroll down one line
+- `k` / `↑` — scroll up one line
+- `q` / `esc` — exit the pager
+
+To use an external pager instead, pass the `-p` flag. This defaults
 to the ANSI-aware `less -r` if `$PAGER` is not explicitly set.
 
 ### Styles
