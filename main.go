@@ -339,6 +339,16 @@ func executeCLI(cmd *cobra.Command, src *source, w io.Writer) error {
 		}
 		return runTUI(path, content)
 	default:
+		if term.IsTerminal(int(os.Stdout.Fd())) {
+			termHeight := 0
+			if _, h, err := term.GetSize(int(os.Stdout.Fd())); err == nil {
+				termHeight = h
+			}
+			contentLines := countLines(out)
+			if termHeight > 0 && contentLines > termHeight {
+				return runBuiltinPager(out, src.URL)
+			}
+		}
 		if _, err = fmt.Fprint(w, out); err != nil {
 			return fmt.Errorf("unable to write to writer: %w", err)
 		}
